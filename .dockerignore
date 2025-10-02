@@ -1,0 +1,16 @@
+node_modules
+npm-debug.log
+.git
+.github
+.gitignore
+*.md
+!README.md
+.eslintcache
+.prettierignore
+.prettierrc.cjs
+eslint.config.mjs
+*.test.js
+*.test.ts
+coverage
+.DS_Store
+docker-build*.log

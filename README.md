@@ -35,6 +35,8 @@ MCP clients.
 
 ## Getting started
 
+### Option 1: Using npx (Original Method)
+
 Add the following config to your MCP client:
 
 ```json
@@ -48,8 +50,35 @@ Add the following config to your MCP client:
 }
 ```
 
-> [!NOTE]  
+> [!NOTE]
 > Using `chrome-devtools-mcp@latest` ensures that your MCP client will always use the latest version of the Chrome DevTools MCP server.
+
+### Option 2: Using Docker (Recommended for demos-mcp integration)
+
+This fork provides a Docker-based setup for easier integration:
+
+1. **Build the Docker image:**
+   ```bash
+   docker build -t demosdeutschland/chrome-devtools-mcp:latest .
+   ```
+
+2. **Run with Docker:**
+   ```bash
+   docker run --rm -i --cap-add=SYS_ADMIN demosdeutschland/chrome-devtools-mcp:latest --headless
+   ```
+
+3. **Use with Claude Code via wrapper script:**
+   ```bash
+   claude mcp add chrome-devtools-mcp ./chrome-devtools-mcp-wrapper.sh
+   ```
+
+**Docker Environment Variables:**
+- `CHROME_HEADLESS`: Run in headless mode (default: true)
+- `CHROME_ISOLATED`: Use isolated user data directory (default: true)
+- `CHROME_VIEWPORT`: Set viewport size (e.g., 1920x1080)
+- `CHROME_LOG_FILE`: Path for debug logs
+
+See the [demos-mcp repository](https://github.com/heissdemos/demos-mcp) for complete Docker Compose integration.
 
 ### MCP Client configuration
 

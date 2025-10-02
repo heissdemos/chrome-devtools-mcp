@@ -95,6 +95,11 @@ export async function launch(options: McpLaunchOptions): Promise<Browser> {
   const args: LaunchOptions['args'] = [
     ...(options.args ?? []),
     '--hide-crash-restore-bubble',
+    // Docker/Container flags - required for running Chrome in containers
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-gpu',
   ];
   if (customDevTools) {
     args.push(`--custom-devtools-frontend=file://${customDevTools}`);
