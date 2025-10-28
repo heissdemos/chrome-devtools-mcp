@@ -4,27 +4,26 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import {writeFile} from 'node:fs/promises';
+import {zod} from '../third_party/index.js';
+import type {ElementHandle, Page} from '../third_party/index.js';
 
-import type {ElementHandle, Page} from 'puppeteer-core';
-import z from 'zod';
-
-import {ToolCategories} from './categories.js';
+import {ToolCategory} from './categories.js';
 import {defineTool} from './ToolDefinition.js';
 
 export const screenshot = defineTool({
   name: 'take_screenshot',
   description: `Take a screenshot of the page or element.`,
   annotations: {
-    category: ToolCategories.DEBUGGING,
-    readOnlyHint: true,
+    category: ToolCategory.DEBUGGING,
+    // Not read-only due to filePath param.
+    readOnlyHint: false,
   },
   schema: {
-    format: z
+    format: zod
       .enum(['png', 'jpeg', 'webp'])
       .default('png')
       .describe('Type of format to save the screenshot as. Default is "png"'),
-    quality: z
+    quality: zod
       .number()
       .min(0)
       .max(100)
@@ -32,19 +31,19 @@ export const screenshot = defineTool({
       .describe(
         'Compression quality for JPEG and WebP formats (0-100). Higher values mean better quality but larger file sizes. Ignored for PNG format.',
       ),
-    uid: z
+    uid: zod
       .string()
       .optional()
       .describe(
         'The uid of an element on the page from the page content snapshot. If omitted takes a pages screenshot.',
       ),
-    fullPage: z
+    fullPage: zod
       .boolean()
       .optional()
       .describe(
         'If set to true takes a screenshot of the full page instead of the currently visible viewport. Incompatible with uid.',
       ),
-    filePath: z
+    filePath: zod
       .string()
       .optional()
       .describe(
@@ -85,10 +84,8 @@ export const screenshot = defineTool({
     }
 
     if (request.params.filePath) {
-      await writeFile(request.params.filePath, screenshot);
-      response.appendResponseLine(
-        `Saved screenshot to ${request.params.filePath}.`,
-      );
+      const file = await context.saveFile(screenshot, request.params.filePath);
+      response.appendResponseLine(`Saved screenshot to ${file.filename}.`);
     } else if (screenshot.length >= 2_000_000) {
       const {filename} = await context.saveTemporaryFile(
         screenshot,

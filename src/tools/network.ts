@@ -4,10 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type {ResourceType} from 'puppeteer-core';
-import z from 'zod';
+import {zod} from '../third_party/index.js';
+import type {ResourceType} from '../third_party/index.js';
 
-import {ToolCategories} from './categories.js';
+import {ToolCategory} from './categories.js';
 import {defineTool} from './ToolDefinition.js';
 
 const FILTERABLE_RESOURCE_TYPES: readonly [ResourceType, ...ResourceType[]] = [
@@ -34,13 +34,13 @@ const FILTERABLE_RESOURCE_TYPES: readonly [ResourceType, ...ResourceType[]] = [
 
 export const listNetworkRequests = defineTool({
   name: 'list_network_requests',
-  description: `List all requests for the currently selected page`,
+  description: `List all requests for the currently selected page since the last navigation.`,
   annotations: {
-    category: ToolCategories.NETWORK,
+    category: ToolCategory.NETWORK,
     readOnlyHint: true,
   },
   schema: {
-    pageSize: z
+    pageSize: zod
       .number()
       .int()
       .positive()
@@ -48,7 +48,7 @@ export const listNetworkRequests = defineTool({
       .describe(
         'Maximum number of requests to return. When omitted, returns all requests.',
       ),
-    pageIdx: z
+    pageIdx: zod
       .number()
       .int()
       .min(0)
@@ -56,11 +56,18 @@ export const listNetworkRequests = defineTool({
       .describe(
         'Page number to return (0-based). When omitted, returns the first page.',
       ),
-    resourceTypes: z
-      .array(z.enum(FILTERABLE_RESOURCE_TYPES))
+    resourceTypes: zod
+      .array(zod.enum(FILTERABLE_RESOURCE_TYPES))
       .optional()
       .describe(
         'Filter requests to only return requests of the specified resource types. When omitted or empty, returns all requests.',
+      ),
+    includePreservedRequests: zod
+      .boolean()
+      .default(false)
+      .optional()
+      .describe(
+        'Set to true to return the preserved requests over the last 3 navigations.',
       ),
   },
   handler: async (request, response) => {
@@ -68,6 +75,7 @@ export const listNetworkRequests = defineTool({
       pageSize: request.params.pageSize,
       pageIdx: request.params.pageIdx,
       resourceTypes: request.params.resourceTypes,
+      includePreservedRequests: request.params.includePreservedRequests,
     });
   },
 });
@@ -76,13 +84,17 @@ export const getNetworkRequest = defineTool({
   name: 'get_network_request',
   description: `Gets a network request by URL. You can get all requests by calling ${listNetworkRequests.name}.`,
   annotations: {
-    category: ToolCategories.NETWORK,
+    category: ToolCategory.NETWORK,
     readOnlyHint: true,
   },
   schema: {
-    url: z.string().describe('The URL of the request.'),
+    reqid: zod
+      .number()
+      .describe(
+        'The reqid of a request on the page from the listed network requests',
+      ),
   },
   handler: async (request, response, _context) => {
-    response.attachNetworkRequest(request.params.url);
+    response.attachNetworkRequest(request.params.reqid);
   },
 });
