@@ -16,6 +16,8 @@ RUN npm ci
 COPY src ./src
 COPY tests ./tests
 COPY tsconfig.json ./
+COPY rollup.config.mjs ./
+COPY puppeteer.config.cjs ./
 
 # Build the project
 RUN npm run build
