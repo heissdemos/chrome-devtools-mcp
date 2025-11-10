@@ -59,8 +59,10 @@ COPY package*.json ./
 # Copy scripts needed for prepare hook
 COPY scripts ./scripts
 
-# Install only production dependencies
-RUN npm ci --omit=dev
+# Install all dependencies (including devDependencies for runtime)
+# Note: Some packages in devDependencies (yargs, debug, @modelcontextprotocol/sdk, puppeteer)
+# are actually used at runtime via src/third_party/index.ts
+RUN npm ci
 
 # Copy built files from builder stage
 COPY --from=builder /app/build ./build
