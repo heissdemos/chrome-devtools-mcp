@@ -47,6 +47,11 @@ export interface SnapshotParams {
   filePath?: string;
 }
 
+export interface DevToolsData {
+  cdpRequestId?: string;
+  cdpBackendNodeId?: number;
+}
+
 export interface Response {
   appendResponseLine(value: string): void;
   setIncludePages(value: boolean): void;
@@ -55,6 +60,7 @@ export interface Response {
     options?: PaginationOptions & {
       resourceTypes?: string[];
       includePreservedRequests?: boolean;
+      networkRequestIdInDevToolsUI?: number;
     },
   ): void;
   setIncludeConsoleData(
@@ -68,6 +74,8 @@ export interface Response {
   attachImage(value: ImageContentData): void;
   attachNetworkRequest(reqid: number): void;
   attachConsoleMessage(msgid: number): void;
+  // Allows re-using DevTools data queried by some tools.
+  attachDevToolsData(data: DevToolsData): void;
 }
 
 /**
@@ -82,9 +90,10 @@ export type Context = Readonly<{
   getDialog(): Dialog | undefined;
   clearDialog(): void;
   getPageByIdx(idx: number): Page;
+  isPageSelected(page: Page): boolean;
   newPage(): Promise<Page>;
   closePage(pageIdx: number): Promise<void>;
-  setSelectedPageIdx(idx: number): void;
+  selectPage(page: Page): void;
   getElementByUid(uid: string): Promise<ElementHandle<Element>>;
   getAXNodeByUid(uid: string): TextSnapshotNode | undefined;
   setNetworkConditions(conditions: string | null): void;
@@ -102,6 +111,15 @@ export type Context = Readonly<{
     text: string;
     timeout?: number | undefined;
   }): Promise<Element>;
+  getDevToolsData(): Promise<DevToolsData>;
+  /**
+   * Returns a reqid for a cdpRequestId.
+   */
+  resolveCdpRequestId(cdpRequestId: string): number | undefined;
+  /**
+   * Returns a reqid for a cdpRequestId.
+   */
+  resolveCdpElementId(cdpBackendNodeId: number): string | undefined;
 }>;
 
 export function defineTool<Schema extends zod.ZodRawShape>(

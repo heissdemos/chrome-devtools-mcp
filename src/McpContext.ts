@@ -25,12 +25,13 @@ import type {
 import {listPages} from './tools/pages.js';
 import {takeSnapshot} from './tools/snapshot.js';
 import {CLOSE_PAGE_ERROR} from './tools/ToolDefinition.js';
-import type {Context} from './tools/ToolDefinition.js';
+import type {Context, DevToolsData} from './tools/ToolDefinition.js';
 import type {TraceResult} from './trace-processing/parse.js';
 import {WaitForHelper} from './WaitForHelper.js';
 
 export interface TextSnapshotNode extends SerializedAXNode {
   id: string;
+  backendNodeId?: number;
   children: TextSnapshotNode[];
 }
 
@@ -38,11 +39,14 @@ export interface TextSnapshot {
   root: TextSnapshotNode;
   idToNode: Map<string, TextSnapshotNode>;
   snapshotId: string;
+  selectedElementUid?: string;
 }
 
 interface McpContextOptions {
   // Whether the DevTools windows are exposed as pages for debugging of DevTools.
   experimentalDevToolsDebugging: boolean;
+  // Whether all page-like targets are exposed as pages.
+  experimentalIncludeAllPages?: boolean;
 }
 
 const DEFAULT_TIMEOUT = 5_000;
@@ -84,7 +88,7 @@ export class McpContext implements Context {
   // The most recent page state.
   #pages: Page[] = [];
   #pageToDevToolsPage = new Map<Page, Page>();
-  #selectedPageIdx = 0;
+  #selectedPage?: Page;
   // The most recent snapshot.
   #textSnapshot: TextSnapshot | null = null;
   #networkCollector: NetworkCollector;
@@ -112,29 +116,36 @@ export class McpContext implements Context {
     this.#locatorClass = locatorClass;
     this.#options = options;
 
-    this.#networkCollector = new NetworkCollector(this.browser);
+    this.#networkCollector = new NetworkCollector(
+      this.browser,
+      undefined,
+      this.#options.experimentalIncludeAllPages,
+    );
 
-    this.#consoleCollector = new PageCollector(this.browser, collect => {
-      return {
-        console: event => {
-          collect(event);
-        },
-        pageerror: event => {
-          if (event instanceof Error) {
+    this.#consoleCollector = new PageCollector(
+      this.browser,
+      collect => {
+        return {
+          console: event => {
             collect(event);
-          } else {
-            const error = new Error(`${event}`);
-            error.stack = undefined;
-            collect(error);
-          }
-        },
-      } as ListenerMap;
-    });
+          },
+          pageerror: event => {
+            if (event instanceof Error) {
+              collect(event);
+            } else {
+              const error = new Error(`${event}`);
+              error.stack = undefined;
+              collect(error);
+            }
+          },
+        } as ListenerMap;
+      },
+      this.#options.experimentalIncludeAllPages,
+    );
   }
 
   async #init() {
     await this.createPagesSnapshot();
-    this.setSelectedPageIdx(0);
     await this.#networkCollector.init();
     await this.#consoleCollector.init();
   }
@@ -149,6 +160,42 @@ export class McpContext implements Context {
     const context = new McpContext(browser, logger, opts, locatorClass);
     await context.#init();
     return context;
+  }
+
+  resolveCdpRequestId(cdpRequestId: string): number | undefined {
+    const selectedPage = this.getSelectedPage();
+    if (!cdpRequestId) {
+      this.logger('no network request');
+      return;
+    }
+    const request = this.#networkCollector.find(selectedPage, request => {
+      // @ts-expect-error id is internal.
+      return request.id === cdpRequestId;
+    });
+    if (!request) {
+      this.logger('no network request for ' + cdpRequestId);
+      return;
+    }
+    return this.#networkCollector.getIdForResource(request);
+  }
+
+  resolveCdpElementId(cdpBackendNodeId: number): string | undefined {
+    if (!cdpBackendNodeId) {
+      this.logger('no cdpBackendNodeId');
+      return;
+    }
+    // TODO: index by backendNodeId instead.
+    const queue = [this.#textSnapshot?.root];
+    while (queue.length) {
+      const current = queue.pop()!;
+      if (current.backendNodeId === cdpBackendNodeId) {
+        return current.id;
+      }
+      for (const child of current.children) {
+        queue.push(child);
+      }
+    }
+    return;
   }
 
   getNetworkRequests(includePreservedRequests?: boolean): HTTPRequest[] {
@@ -173,8 +220,8 @@ export class McpContext implements Context {
 
   async newPage(): Promise<Page> {
     const page = await this.browser.newPage();
-    const pages = await this.createPagesSnapshot();
-    this.setSelectedPageIdx(pages.indexOf(page));
+    await this.createPagesSnapshot();
+    this.selectPage(page);
     this.#networkCollector.addPage(page);
     this.#consoleCollector.addPage(page);
     return page;
@@ -184,7 +231,6 @@ export class McpContext implements Context {
       throw new Error(CLOSE_PAGE_ERROR);
     }
     const page = this.getPageByIdx(pageIdx);
-    this.setSelectedPageIdx(0);
     await page.close({runBeforeUnload: false});
   }
 
@@ -235,7 +281,7 @@ export class McpContext implements Context {
   }
 
   getSelectedPage(): Page {
-    const page = this.#pages[this.#selectedPageIdx];
+    const page = this.#selectedPage;
     if (!page) {
       throw new Error('No page selected');
     }
@@ -256,19 +302,20 @@ export class McpContext implements Context {
     return page;
   }
 
-  getSelectedPageIdx(): number {
-    return this.#selectedPageIdx;
-  }
-
   #dialogHandler = (dialog: Dialog): void => {
     this.#dialog = dialog;
   };
 
-  setSelectedPageIdx(idx: number): void {
-    const oldPage = this.getSelectedPage();
-    oldPage.off('dialog', this.#dialogHandler);
-    this.#selectedPageIdx = idx;
-    const newPage = this.getSelectedPage();
+  isPageSelected(page: Page): boolean {
+    return this.#selectedPage === page;
+  }
+
+  selectPage(newPage: Page): void {
+    const oldPage = this.#selectedPage;
+    if (oldPage) {
+      oldPage.off('dialog', this.#dialogHandler);
+    }
+    this.#selectedPage = newPage;
     newPage.on('dialog', this.#dialogHandler);
     this.#updateSelectedPageTimeouts();
   }
@@ -326,7 +373,9 @@ export class McpContext implements Context {
    * Creates a snapshot of the pages.
    */
   async createPagesSnapshot(): Promise<Page[]> {
-    const allPages = await this.browser.pages();
+    const allPages = await this.browser.pages(
+      this.#options.experimentalIncludeAllPages,
+    );
 
     this.#pages = allPages.filter(page => {
       // If we allow debugging DevTools windows, return all pages.
@@ -337,16 +386,25 @@ export class McpContext implements Context {
       );
     });
 
-    await this.#detectOpenDevToolsWindows(allPages);
+    if (!this.#selectedPage || this.#pages.indexOf(this.#selectedPage) === -1) {
+      this.selectPage(this.#pages[0]);
+    }
+
+    await this.detectOpenDevToolsWindows();
 
     return this.#pages;
   }
 
-  async #detectOpenDevToolsWindows(pages: Page[]) {
+  async detectOpenDevToolsWindows() {
+    this.logger('Detecting open DevTools windows');
+    const pages = await this.browser.pages(
+      this.#options.experimentalIncludeAllPages,
+    );
     this.#pageToDevToolsPage = new Map<Page, Page>();
     for (const devToolsPage of pages) {
       if (devToolsPage.url().startsWith('devtools://')) {
         try {
+          this.logger('Calling getTargetInfo for ' + devToolsPage.url());
           const data = await devToolsPage
             // @ts-expect-error no types for _client().
             ._client()
@@ -377,10 +435,47 @@ export class McpContext implements Context {
     return this.#pageToDevToolsPage.get(page);
   }
 
+  async getDevToolsData(): Promise<DevToolsData> {
+    try {
+      this.logger('Getting DevTools UI data');
+      const selectedPage = this.getSelectedPage();
+      const devtoolsPage = this.getDevToolsPage(selectedPage);
+      if (!devtoolsPage) {
+        this.logger('No DevTools page detected');
+        return {};
+      }
+      const {cdpRequestId, cdpBackendNodeId} = await devtoolsPage.evaluate(
+        async () => {
+          // @ts-expect-error no types
+          const UI = await import('/bundled/ui/legacy/legacy.js');
+          // @ts-expect-error no types
+          const SDK = await import('/bundled/core/sdk/sdk.js');
+          const request = UI.Context.Context.instance().flavor(
+            SDK.NetworkRequest.NetworkRequest,
+          );
+          const node = UI.Context.Context.instance().flavor(
+            SDK.DOMModel.DOMNode,
+          );
+          return {
+            cdpRequestId: request?.requestId(),
+            cdpBackendNodeId: node?.backendNodeId(),
+          };
+        },
+      );
+      return {cdpBackendNodeId, cdpRequestId};
+    } catch (err) {
+      this.logger('error getting devtools data', err);
+    }
+    return {};
+  }
+
   /**
    * Creates a text snapshot of a page.
    */
-  async createTextSnapshot(verbose = false): Promise<void> {
+  async createTextSnapshot(
+    verbose = false,
+    devtoolsData: DevToolsData | undefined = undefined,
+  ): Promise<void> {
     const page = this.getSelectedPage();
     const rootNode = await page.accessibility.snapshot({
       includeIframes: true,
@@ -423,6 +518,12 @@ export class McpContext implements Context {
       snapshotId: String(snapshotId),
       idToNode,
     };
+    const data = devtoolsData ?? (await this.getDevToolsData());
+    if (data?.cdpBackendNodeId) {
+      this.#textSnapshot.selectedElementUid = this.resolveCdpElementId(
+        data?.cdpBackendNodeId,
+      );
+    }
   }
 
   getTextSnapshot(): TextSnapshot | null {

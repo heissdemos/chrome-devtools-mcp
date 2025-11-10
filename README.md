@@ -248,6 +248,12 @@ Go to `Settings | AI | Manage MCP Servers` -> `+ Add` to [add an MCP Server](htt
 
 </details>
 
+<details>
+  <summary>Windsurf</summary>
+  Follow the <a href="https://docs.windsurf.com/windsurf/cascade/mcp#mcp-config-json">configure MCP guide</a>
+  using the standard config from above.
+</details>
+
 ### Your first prompt
 
 Enter the following prompt in your MCP Client to check if everything is working:
@@ -283,9 +289,8 @@ If you run into any issues, checkout our [troubleshooting guide](./docs/troubles
   - [`new_page`](docs/tool-reference.md#new_page)
   - [`select_page`](docs/tool-reference.md#select_page)
   - [`wait_for`](docs/tool-reference.md#wait_for)
-- **Emulation** (3 tools)
-  - [`emulate_cpu`](docs/tool-reference.md#emulate_cpu)
-  - [`emulate_network`](docs/tool-reference.md#emulate_network)
+- **Emulation** (2 tools)
+  - [`emulate`](docs/tool-reference.md#emulate)
   - [`resize_page`](docs/tool-reference.md#resize_page)
 - **Performance** (3 tools)
   - [`performance_analyze_insight`](docs/tool-reference.md#performance_analyze_insight)
@@ -361,17 +366,17 @@ The Chrome DevTools MCP server supports the following configuration option:
   - **Type:** array
 
 - **`--categoryEmulation`**
-  Set to false to exlcude tools related to emulation.
+  Set to false to exclude tools related to emulation.
   - **Type:** boolean
   - **Default:** `true`
 
 - **`--categoryPerformance`**
-  Set to false to exlcude tools related to performance.
+  Set to false to exclude tools related to performance.
   - **Type:** boolean
   - **Default:** `true`
 
 - **`--categoryNetwork`**
-  Set to false to exlcude tools related to network.
+  Set to false to exclude tools related to network.
   - **Type:** boolean
   - **Default:** `true`
 

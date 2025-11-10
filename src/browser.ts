@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import {logger} from './logger.js';
 import type {
   Browser,
   ChromeReleaseChannel,
@@ -65,7 +66,9 @@ export async function ensureBrowserConnected(options: {
     throw new Error('Either browserURL or wsEndpoint must be provided');
   }
 
+  logger('Connecting Puppeteer to ', JSON.stringify(connectOptions));
   browser = await puppeteer.connect(connectOptions);
+  logger('Connected Puppeteer');
   return browser;
 }
 
