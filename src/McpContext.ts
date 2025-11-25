@@ -3,13 +3,16 @@
  * Copyright 2025 Google LLC
  * SPDX-License-Identifier: Apache-2.0
  */
+
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import {type AggregatedIssue} from '../node_modules/chrome-devtools-frontend/mcp/mcp.js';
+
 import {extractUrlLikeFromDevToolsTitle, urlsEqual} from './DevtoolsUtils.js';
 import type {ListenerMap} from './PageCollector.js';
-import {NetworkCollector, PageCollector} from './PageCollector.js';
+import {NetworkCollector, ConsoleCollector} from './PageCollector.js';
 import {Locator} from './third_party/index.js';
 import type {
   Browser,
@@ -40,6 +43,10 @@ export interface TextSnapshot {
   idToNode: Map<string, TextSnapshotNode>;
   snapshotId: string;
   selectedElementUid?: string;
+  // It might happen that there is a selected element, but it is not part of the
+  // snapshot. This flag indicates if there is any selected element.
+  hasSelectedElement: boolean;
+  verbose: boolean;
 }
 
 interface McpContextOptions {
@@ -92,7 +99,7 @@ export class McpContext implements Context {
   // The most recent snapshot.
   #textSnapshot: TextSnapshot | null = null;
   #networkCollector: NetworkCollector;
-  #consoleCollector: PageCollector<ConsoleMessage | Error>;
+  #consoleCollector: ConsoleCollector;
 
   #isRunningTrace = false;
   #networkConditionsMap = new WeakMap<Page, string>();
@@ -122,7 +129,7 @@ export class McpContext implements Context {
       this.#options.experimentalIncludeAllPages,
     );
 
-    this.#consoleCollector = new PageCollector(
+    this.#consoleCollector = new ConsoleCollector(
       this.browser,
       collect => {
         return {
@@ -138,6 +145,9 @@ export class McpContext implements Context {
               collect(error);
             }
           },
+          issue: event => {
+            collect(event);
+          },
         } as ListenerMap;
       },
       this.#options.experimentalIncludeAllPages,
@@ -148,6 +158,11 @@ export class McpContext implements Context {
     await this.createPagesSnapshot();
     await this.#networkCollector.init();
     await this.#consoleCollector.init();
+  }
+
+  dispose() {
+    this.#networkCollector.dispose();
+    this.#consoleCollector.dispose();
   }
 
   static async from(
@@ -205,16 +220,18 @@ export class McpContext implements Context {
 
   getConsoleData(
     includePreservedMessages?: boolean,
-  ): Array<ConsoleMessage | Error> {
+  ): Array<ConsoleMessage | Error | AggregatedIssue> {
     const page = this.getSelectedPage();
     return this.#consoleCollector.getData(page, includePreservedMessages);
   }
 
-  getConsoleMessageStableId(message: ConsoleMessage | Error): number {
+  getConsoleMessageStableId(
+    message: ConsoleMessage | Error | AggregatedIssue,
+  ): number {
     return this.#consoleCollector.getIdForResource(message);
   }
 
-  getConsoleMessageById(id: number): ConsoleMessage | Error {
+  getConsoleMessageById(id: number): ConsoleMessage | Error | AggregatedIssue {
     return this.#consoleCollector.getById(this.getSelectedPage(), id);
   }
 
@@ -517,9 +534,12 @@ export class McpContext implements Context {
       root: rootNodeWithId,
       snapshotId: String(snapshotId),
       idToNode,
+      hasSelectedElement: false,
+      verbose,
     };
     const data = devtoolsData ?? (await this.getDevToolsData());
     if (data?.cdpBackendNodeId) {
+      this.#textSnapshot.hasSelectedElement = true;
       this.#textSnapshot.selectedElementUid = this.resolveCdpElementId(
         data?.cdpBackendNodeId,
       );

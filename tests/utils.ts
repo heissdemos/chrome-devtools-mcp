@@ -3,6 +3,7 @@
  * Copyright 2025 Google LLC
  * SPDX-License-Identifier: Apache-2.0
  */
+
 import logger from 'debug';
 import type {Browser} from 'puppeteer';
 import puppeteer, {Locator} from 'puppeteer';
@@ -18,6 +19,7 @@ import {McpResponse} from '../src/McpResponse.js';
 import {stableIdSymbol} from '../src/PageCollector.js';
 
 const browsers = new Map<string, Browser>();
+let context: McpContext | undefined;
 
 export async function withBrowser(
   cb: (response: McpResponse, context: McpContext) => Promise<void>,
@@ -48,7 +50,10 @@ export async function withBrowser(
     }),
   );
   const response = new McpResponse();
-  const context = await McpContext.from(
+  if (context) {
+    context.dispose();
+  }
+  context = await McpContext.from(
     browser,
     logger('test'),
     {
@@ -158,8 +163,8 @@ export function stabilizeResponseOutput(text: unknown) {
   const dateRegEx = /.{3}, \d{2} .{3} \d{4} \d{2}:\d{2}:\d{2} [A-Z]{3}/g;
   output = output.replaceAll(dateRegEx, '<long date>');
 
-  const localhostRegEx = /http:\/\/localhost:\d{5}\//g;
-  output = output.replaceAll(localhostRegEx, 'http://localhost:<port>/');
+  const localhostRegEx = /localhost:\d{5}/g;
+  output = output.replaceAll(localhostRegEx, 'localhost:<port>');
 
   const userAgentRegEx = /user-agent:.*\n/g;
   output = output.replaceAll(userAgentRegEx, 'user-agent:<user-agent>\n');
