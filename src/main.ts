@@ -6,6 +6,8 @@
 
 import './polyfill.js';
 
+import process from 'node:process';
+
 import type {Channel} from './browser.js';
 import {ensureBrowserConnected, ensureBrowserLaunched} from './browser.js';
 import {parseArguments} from './cli.js';
@@ -26,12 +28,16 @@ import {tools} from './tools/tools.js';
 
 // If moved update release-please config
 // x-release-please-start-version
-const VERSION = '0.12.0';
+const VERSION = '0.12.1';
 // x-release-please-end
 
 export const args = parseArguments(VERSION);
 
 const logFile = args.logFile ? saveLogsToFile(args.logFile) : undefined;
+
+process.on('unhandledRejection', (reason, promise) => {
+  logger('Unhandled promise rejection', promise, reason);
+});
 
 logger(`Starting Chrome DevTools MCP Server v${VERSION}`);
 const server = new McpServer(
