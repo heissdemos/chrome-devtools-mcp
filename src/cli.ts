@@ -11,7 +11,7 @@ export const cliOptions = {
   autoConnect: {
     type: 'boolean',
     description:
-      'If specified, automatically connects to a browser (Chrome 145+) running in the user data directory identified by the channel param. Requires remote debugging being enabled in Chrome here: chrome://inspect/#remote-debugging.',
+      'If specified, automatically connects to a browser (Chrome 144+) running in the user data directory identified by the channel param. Requires the remoted debugging server to be started in the Chrome instance via chrome://inspect/#remote-debugging.',
     conflicts: ['isolated', 'executablePath'],
     default: false,
     coerce: (value: boolean | undefined) => {
@@ -152,16 +152,36 @@ export const cliOptions = {
     describe: 'Whether to enable automation over DevTools targets',
     hidden: true,
   },
+  experimentalVision: {
+    type: 'boolean',
+    describe: 'Whether to enable vision tools',
+    hidden: true,
+  },
+  experimentalStructuredContent: {
+    type: 'boolean',
+    describe: 'Whether to output structured formatted content.',
+    hidden: true,
+  },
   experimentalIncludeAllPages: {
     type: 'boolean',
     describe:
       'Whether to include all kinds of pages such as webviews or background pages as pages.',
     hidden: true,
   },
+  experimentalInteropTools: {
+    type: 'boolean',
+    describe: 'Whether to enable interoperability tools',
+    hidden: true,
+  },
   chromeArg: {
     type: 'array',
     describe:
       'Additional arguments for Chrome. Only applies when Chrome is launched by chrome-devtools-mcp.',
+  },
+  ignoreDefaultChromeArg: {
+    type: 'array',
+    describe:
+      'Explicitly disable default arguments for Chrome. Only applies when Chrome is launched by chrome-devtools-mcp.',
   },
   categoryEmulation: {
     type: 'boolean',
@@ -177,6 +197,33 @@ export const cliOptions = {
     type: 'boolean',
     default: true,
     describe: 'Set to false to exclude tools related to network.',
+  },
+  categoryExtensions: {
+    type: 'boolean',
+    default: false,
+    hidden: true,
+    describe: 'Set to false to exclude tools related to extensions.',
+  },
+  usageStatistics: {
+    type: 'boolean',
+    default: true,
+    describe:
+      'Set to false to opt-out of usage statistics collection. Google collects usage data to improve the tool, handled under the Google Privacy Policy (https://policies.google.com/privacy). This is independent from Chrome browser metrics. Disabled if CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS or CI env variables are set.',
+  },
+  clearcutEndpoint: {
+    type: 'string',
+    hidden: true,
+    describe: 'Endpoint for Clearcut telemetry.',
+  },
+  clearcutForceFlushIntervalMs: {
+    type: 'number',
+    hidden: true,
+    describe: 'Force flush interval in milliseconds (for testing).',
+  },
+  clearcutIncludePidHeader: {
+    type: 'boolean',
+    hidden: true,
+    describe: 'Include watchdog PID in Clearcut request headers (for testing).',
   },
 } satisfies Record<string, YargsOptions>;
 
@@ -224,6 +271,10 @@ export function parseArguments(version: string, argv = process.argv) {
         `$0 --chrome-arg='--no-sandbox' --chrome-arg='--disable-setuid-sandbox'`,
         'Launch Chrome without sandboxes. Use with caution.',
       ],
+      [
+        `$0 --ignore-default-chrome-arg='--disable-extensions'`,
+        'Disable the default arguments provided by Puppeteer. Use with caution.',
+      ],
       ['$0 --no-category-emulation', 'Disable tools in the emulation category'],
       [
         '$0 --no-category-performance',
@@ -236,11 +287,15 @@ export function parseArguments(version: string, argv = process.argv) {
       ],
       [
         '$0 --auto-connect',
-        'Connect to a stable Chrome instance (Chrome 145+) running instead of launching a new instance',
+        'Connect to a stable Chrome instance (Chrome 144+) running instead of launching a new instance',
       ],
       [
         '$0 --auto-connect --channel=canary',
-        'Connect to a canary Chrome instance (Chrome 145+) running instead of launching a new instance',
+        'Connect to a canary Chrome instance (Chrome 144+) running instead of launching a new instance',
+      ],
+      [
+        '$0 --no-usage-statistics',
+        'Do not send usage statistics https://github.com/ChromeDevTools/chrome-devtools-mcp#usage-statistics.',
       ],
     ]);
 

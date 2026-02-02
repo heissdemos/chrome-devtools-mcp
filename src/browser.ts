@@ -142,8 +142,10 @@ interface McpLaunchOptions {
     width: number;
     height: number;
   };
-  args?: string[];
+  chromeArgs?: string[];
+  ignoreDefaultChromeArgs?: string[];
   devtools: boolean;
+  enableExtensions?: boolean;
 }
 
 export async function launch(options: McpLaunchOptions): Promise<Browser> {
@@ -167,7 +169,7 @@ export async function launch(options: McpLaunchOptions): Promise<Browser> {
   }
 
   const args: LaunchOptions['args'] = [
-    ...(options.args ?? []),
+    ...(options.chromeArgs ?? []),
     '--hide-crash-restore-bubble',
     // Docker/Container flags - required for running Chrome in containers
     '--no-sandbox',
@@ -175,6 +177,9 @@ export async function launch(options: McpLaunchOptions): Promise<Browser> {
     '--disable-dev-shm-usage',
     '--disable-gpu',
   ];
+  const ignoreDefaultArgs: LaunchOptions['ignoreDefaultArgs'] =
+    options.ignoreDefaultChromeArgs ?? false;
+
   if (headless) {
     args.push('--screen-info={3840x2160}');
   }
@@ -199,8 +204,10 @@ export async function launch(options: McpLaunchOptions): Promise<Browser> {
       pipe: true,
       headless,
       args,
+      ignoreDefaultArgs: ignoreDefaultArgs,
       acceptInsecureCerts: options.acceptInsecureCerts,
       handleDevToolsAsPage: true,
+      enableExtensions: options.enableExtensions,
     });
     if (options.logFile) {
       // FIXME: we are probably subscribing too late to catch startup logs. We
@@ -210,7 +217,6 @@ export async function launch(options: McpLaunchOptions): Promise<Browser> {
     }
     if (options.viewport) {
       const [page] = await browser.pages();
-      // @ts-expect-error internal API for now.
       await page?.resize({
         contentWidth: options.viewport.width,
         contentHeight: options.viewport.height,

@@ -10,12 +10,15 @@ import process from 'node:process';
 
 import type {Channel} from './browser.js';
 import {ensureBrowserConnected, ensureBrowserLaunched} from './browser.js';
-import {parseArguments} from './cli.js';
+import {cliOptions, parseArguments} from './cli.js';
 import {loadIssueDescriptions} from './issue-descriptions.js';
 import {logger, saveLogsToFile} from './logger.js';
 import {McpContext} from './McpContext.js';
 import {McpResponse} from './McpResponse.js';
 import {Mutex} from './Mutex.js';
+import {ClearcutLogger} from './telemetry/clearcut-logger.js';
+import {computeFlagUsage} from './telemetry/flag-utils.js';
+import {bucketizeLatency} from './telemetry/metric-utils.js';
 import {
   McpServer,
   StdioServerTransport,
@@ -28,12 +31,32 @@ import {tools} from './tools/tools.js';
 
 // If moved update release-please config
 // x-release-please-start-version
-const VERSION = '0.12.1';
+const VERSION = '0.15.1';
 // x-release-please-end
 
 export const args = parseArguments(VERSION);
 
 const logFile = args.logFile ? saveLogsToFile(args.logFile) : undefined;
+if (
+  process.env['CI'] ||
+  process.env['CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS']
+) {
+  console.error(
+    "turning off usage statistics. process.env['CI'] || process.env['CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS'] is set.",
+  );
+  args.usageStatistics = false;
+}
+
+let clearcutLogger: ClearcutLogger | undefined;
+if (args.usageStatistics) {
+  clearcutLogger = new ClearcutLogger({
+    logFile: args.logFile,
+    appVersion: VERSION,
+    clearcutEndpoint: args.clearcutEndpoint,
+    clearcutForceFlushIntervalMs: args.clearcutForceFlushIntervalMs,
+    clearcutIncludePidHeader: args.clearcutIncludePidHeader,
+  });
+}
 
 process.on('unhandledRejection', (reason, promise) => {
   logger('Unhandled promise rejection', promise, reason);
@@ -54,9 +77,12 @@ server.server.setRequestHandler(SetLevelRequestSchema, () => {
 
 let context: McpContext;
 async function getContext(): Promise<McpContext> {
-  const extraArgs: string[] = (args.chromeArg ?? []).map(String);
+  const chromeArgs: string[] = (args.chromeArg ?? []).map(String);
+  const ignoreDefaultChromeArgs: string[] = (
+    args.ignoreDefaultChromeArg ?? []
+  ).map(String);
   if (args.proxyServer) {
-    extraArgs.push(`--proxy-server=${args.proxyServer}`);
+    chromeArgs.push(`--proxy-server=${args.proxyServer}`);
   }
   const devtools = args.experimentalDevtools ?? false;
   const browser =
@@ -78,9 +104,11 @@ async function getContext(): Promise<McpContext> {
           userDataDir: args.userDataDir,
           logFile,
           viewport: args.viewport,
-          args: extraArgs,
+          chromeArgs,
+          ignoreDefaultChromeArgs,
           acceptInsecureCerts: args.acceptInsecureCerts,
           devtools,
+          enableExtensions: args.categoryExtensions,
         });
 
   if (context?.browser !== browser) {
@@ -98,6 +126,14 @@ const logDisclaimers = () => {
 debug, and modify any data in the browser or DevTools.
 Avoid sharing sensitive or personal information that you do not want to share with MCP clients.`,
   );
+
+  if (args.usageStatistics) {
+    console.error(
+      `
+Google collects usage statistics to improve Chrome DevTools MCP. To opt-out, run with --no-usage-statistics.
+For more details, visit: https://github.com/ChromeDevTools/chrome-devtools-mcp#usage-statistics`,
+    );
+  }
 };
 
 const toolMutex = new Mutex();
@@ -121,6 +157,24 @@ function registerTool(tool: ToolDefinition): void {
   ) {
     return;
   }
+  if (
+    tool.annotations.category === ToolCategory.EXTENSIONS &&
+    args.categoryExtensions === false
+  ) {
+    return;
+  }
+  if (
+    tool.annotations.conditions?.includes('computerVision') &&
+    !args.experimentalVision
+  ) {
+    return;
+  }
+  if (
+    tool.annotations.conditions?.includes('experimentalInteropTools') &&
+    !args.experimentalInteropTools
+  ) {
+    return;
+  }
   server.registerTool(
     tool.name,
     {
@@ -130,6 +184,8 @@ function registerTool(tool: ToolDefinition): void {
     },
     async (params): Promise<CallToolResult> => {
       const guard = await toolMutex.acquire();
+      const startTime = Date.now();
+      let success = false;
       try {
         logger(`${tool.name} request: ${JSON.stringify(params, null, '  ')}`);
         const context = await getContext();
@@ -143,10 +199,23 @@ function registerTool(tool: ToolDefinition): void {
           response,
           context,
         );
-        const content = await response.handle(tool.name, context);
-        return {
+        const {content, structuredContent} = await response.handle(
+          tool.name,
+          context,
+        );
+        const result: CallToolResult & {
+          structuredContent?: Record<string, unknown>;
+        } = {
           content,
         };
+        success = true;
+        if (args.experimentalStructuredContent) {
+          result.structuredContent = structuredContent as Record<
+            string,
+            unknown
+          >;
+        }
+        return result;
       } catch (err) {
         logger(`${tool.name} error:`, err, err?.stack);
         let errorText = err && 'message' in err ? err.message : String(err);
@@ -163,6 +232,11 @@ function registerTool(tool: ToolDefinition): void {
           isError: true,
         };
       } finally {
+        void clearcutLogger?.logToolInvocation({
+          toolName: tool.name,
+          success,
+          latencyMs: bucketizeLatency(Date.now() - startTime),
+        });
         guard.dispose();
       }
     },
@@ -178,3 +252,5 @@ const transport = new StdioServerTransport();
 await server.connect(transport);
 logger('Chrome DevTools MCP Server connected');
 logDisclaimers();
+void clearcutLogger?.logDailyActiveIfNeeded();
+void clearcutLogger?.logServerStart(computeFlagUsage(args, cliOptions));

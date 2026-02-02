@@ -27,6 +27,22 @@ allowing them to inspect, debug, and modify any data in the browser or DevTools.
 Avoid sharing sensitive or personal information that you don't want to share with
 MCP clients.
 
+## **Usage statistics**
+
+Google collects usage statistics (such as tool invocation success rates, latency, and environment information) to improve the reliability and performance of Chrome DevTools MCP.
+
+Data collection is **enabled by default**. You can opt-out by passing the `--no-usage-statistics` flag when starting the server:
+
+```json
+"args": ["-y", "chrome-devtools-mcp@latest", "--no-usage-statistics"]
+```
+
+Google handles this data in accordance with the [Google Privacy Policy](https://policies.google.com/privacy).
+
+Google's collection of usage statistics for Chrome DevTools MCP is independent from the Chrome browser's usage statistics. Opting out of Chrome metrics does not automatically opt you out of this tool, and vice-versa.
+
+Collection is disabled if CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS or CI env variables are set.
+
 ## Requirements
 
 - [Node.js](https://nodejs.org/) v20.19 or a newer [latest maintenance LTS](https://github.com/nodejs/Release#release-schedule) version.
@@ -95,7 +111,7 @@ amp mcp add chrome-devtools -- npx chrome-devtools-mcp@latest
 <details>
   <summary>Antigravity</summary>
 
-To use the Chrome DevTools MCP server follow the instructions from <a href="https://antigravity.google/docs/mcp">Antigravity's docs<a/> to install a custom MCP server. Add the following config to the MCP servers config:
+To use the Chrome DevTools MCP server follow the instructions from <a href="https://antigravity.google/docs/mcp">Antigravity's docs</a> to install a custom MCP server. Add the following config to the MCP servers config:
 
 ```bash
 {
@@ -120,10 +136,10 @@ Chrome DevTools MCP will not start the browser instance automatically using this
 
 <details>
   <summary>Claude Code</summary>
-    Use the Claude Code CLI to add the Chrome DevTools MCP server (<a href="https://docs.anthropic.com/en/docs/claude-code/mcp">guide</a>):
+    Use the Claude Code CLI to add the Chrome DevTools MCP server (<a href="https://code.claude.com/docs/en/mcp">guide</a>):
 
 ```bash
-claude mcp add chrome-devtools npx chrome-devtools-mcp@latest
+claude mcp add chrome-devtools --scope user npx chrome-devtools-mcp@latest
 ```
 
 </details>
@@ -234,7 +250,10 @@ Install the Chrome DevTools MCP server using the Gemini CLI.
 **Project wide:**
 
 ```bash
+# Either MCP only:
 gemini mcp add chrome-devtools npx chrome-devtools-mcp@latest
+# Or as a Gemini extension (MCP+Skills):
+gemini extensions install --auto-update https://github.com/ChromeDevTools/chrome-devtools-mcp
 ```
 
 **Globally:**
@@ -267,6 +286,25 @@ The same way chrome-devtools-mcp can be configured for JetBrains Junie in `Setti
 In **Kiro Settings**, go to `Configure MCP` > `Open Workspace or User MCP Config` > Use the configuration snippet provided above.
 
 Or, from the IDE **Activity Bar** > `Kiro` > `MCP Servers` > `Click Open MCP Config`. Use the configuration snippet provided above.
+
+</details>
+
+<details>
+  <summary>OpenCode</summary>
+
+Add the following configuration to your `opencode.json` file. If you don't have one, create it at `~/.config/opencode/opencode.json` (<a href="https://opencode.ai/docs/mcp-servers">guide</a>):
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "chrome-devtools": {
+      "type": "local",
+      "command": ["npx", "-y", "chrome-devtools-mcp@latest"]
+    }
+  }
+}
+```
 
 </details>
 
@@ -379,20 +417,20 @@ The Chrome DevTools MCP server supports the following configuration option:
 
 <!-- BEGIN AUTO GENERATED OPTIONS -->
 
-- **`--autoConnect`**
-  If specified, automatically connects to a browser (Chrome 145+) running in the user data directory identified by the channel param. Requires remote debugging being enabled in Chrome here: chrome://inspect/#remote-debugging.
+- **`--autoConnect`/ `--auto-connect`**
+  If specified, automatically connects to a browser (Chrome 144+) running in the user data directory identified by the channel param. Requires the remoted debugging server to be started in the Chrome instance via chrome://inspect/#remote-debugging.
   - **Type:** boolean
   - **Default:** `false`
 
-- **`--browserUrl`, `-u`**
+- **`--browserUrl`/ `--browser-url`, `-u`**
   Connect to a running, debuggable Chrome instance (e.g. `http://127.0.0.1:9222`). For more details see: https://github.com/ChromeDevTools/chrome-devtools-mcp#connecting-to-a-running-chrome-instance.
   - **Type:** string
 
-- **`--wsEndpoint`, `-w`**
+- **`--wsEndpoint`/ `--ws-endpoint`, `-w`**
   WebSocket endpoint to connect to a running Chrome instance (e.g., ws://127.0.0.1:9222/devtools/browser/<id>). Alternative to --browserUrl.
   - **Type:** string
 
-- **`--wsHeaders`**
+- **`--wsHeaders`/ `--ws-headers`**
   Custom headers for WebSocket connection in JSON format (e.g., '{"Authorization":"Bearer token"}'). Only works with --wsEndpoint.
   - **Type:** string
 
@@ -401,7 +439,7 @@ The Chrome DevTools MCP server supports the following configuration option:
   - **Type:** boolean
   - **Default:** `false`
 
-- **`--executablePath`, `-e`**
+- **`--executablePath`/ `--executable-path`, `-e`**
   Path to custom Chrome executable.
   - **Type:** string
 
@@ -409,7 +447,7 @@ The Chrome DevTools MCP server supports the following configuration option:
   If specified, creates a temporary user-data-dir that is automatically cleaned up after the browser is closed. Defaults to false.
   - **Type:** boolean
 
-- **`--userDataDir`**
+- **`--userDataDir`/ `--user-data-dir`**
   Path to the user data directory for Chrome. Default is $HOME/.cache/chrome-devtools-mcp/chrome-profile$CHANNEL_SUFFIX_IF_NON_STABLE
   - **Type:** string
 
@@ -418,7 +456,7 @@ The Chrome DevTools MCP server supports the following configuration option:
   - **Type:** string
   - **Choices:** `stable`, `canary`, `beta`, `dev`
 
-- **`--logFile`**
+- **`--logFile`/ `--log-file`**
   Path to a file to write debug logs to. Set the env variable `DEBUG` to `*` to enable verbose logs. Useful for submitting bug reports.
   - **Type:** string
 
@@ -426,30 +464,39 @@ The Chrome DevTools MCP server supports the following configuration option:
   Initial viewport size for the Chrome instances started by the server. For example, `1280x720`. In headless mode, max size is 3840x2160px.
   - **Type:** string
 
-- **`--proxyServer`**
+- **`--proxyServer`/ `--proxy-server`**
   Proxy server configuration for Chrome passed as --proxy-server when launching the browser. See https://www.chromium.org/developers/design-documents/network-settings/ for details.
   - **Type:** string
 
-- **`--acceptInsecureCerts`**
+- **`--acceptInsecureCerts`/ `--accept-insecure-certs`**
   If enabled, ignores errors relative to self-signed and expired certificates. Use with caution.
   - **Type:** boolean
 
-- **`--chromeArg`**
+- **`--chromeArg`/ `--chrome-arg`**
   Additional arguments for Chrome. Only applies when Chrome is launched by chrome-devtools-mcp.
   - **Type:** array
 
-- **`--categoryEmulation`**
+- **`--ignoreDefaultChromeArg`/ `--ignore-default-chrome-arg`**
+  Explicitly disable default arguments for Chrome. Only applies when Chrome is launched by chrome-devtools-mcp.
+  - **Type:** array
+
+- **`--categoryEmulation`/ `--category-emulation`**
   Set to false to exclude tools related to emulation.
   - **Type:** boolean
   - **Default:** `true`
 
-- **`--categoryPerformance`**
+- **`--categoryPerformance`/ `--category-performance`**
   Set to false to exclude tools related to performance.
   - **Type:** boolean
   - **Default:** `true`
 
-- **`--categoryNetwork`**
+- **`--categoryNetwork`/ `--category-network`**
   Set to false to exclude tools related to network.
+  - **Type:** boolean
+  - **Default:** `true`
+
+- **`--usageStatistics`/ `--usage-statistics`**
+  Set to false to opt-out of usage statistics collection. Google collects usage data to improve the tool, handled under the Google Privacy Policy (https://policies.google.com/privacy). This is independent from Chrome browser metrics. Disabled if CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS or CI env variables are set.
   - **Type:** boolean
   - **Default:** `true`
 
@@ -528,7 +575,7 @@ In these cases, start Chrome first and let the Chrome DevTools MCP server connec
 
 **Step 1:** Set up remote debugging in Chrome
 
-In Chrome, do the following to set up remote debugging:
+In Chrome (\>= M144), do the following to set up remote debugging:
 
 1.  Navigate to `chrome://inspect/#remote-debugging` to enable remote debugging.
 2.  Follow the dialog UI to allow or disallow incoming debugging connections.
@@ -545,17 +592,13 @@ The following code snippet is an example configuration for gemini-cli:
   "mcpServers": {
     "chrome-devtools": {
       "command": "npx",
-      "args": [
-        "chrome-devtools-mcp@latest",
-        "--autoConnect",
-        "--channel=canary"
-      ]
+      "args": ["chrome-devtools-mcp@latest", "--autoConnect", "--channel=beta"]
     }
   }
 }
 ```
 
-Note: you have to specify `--channel=canary` until Chrome M144 has reached the
+Note: you have to specify `--channel=beta` until Chrome M144 has reached the
 stable channel.
 
 **Step 3:** Test your setup
@@ -566,7 +609,8 @@ Make sure your browser is running. Open gemini-cli and run the following prompt:
 Check the performance of https://developers.chrome.com
 ```
 
-Note: The <code>autoConnect</code> option requires the user to start Chrome.
+> [!NOTE]  
+> The <code>autoConnect</code> option requires the user to start Chrome. If the user has multiple active profiles, the MCP server will connect to the default profile (as determined by Chrome). The MCP server has access to all open windows for the selected profile.
 
 The Chrome DevTools MCP server will try to connect to your running Chrome
 instance. It shows a dialog asking for user permission.
@@ -639,6 +683,10 @@ Your MCP client should connect to the running Chrome instance and receive a perf
 If you hit VM-to-host port forwarding issues, see the “Remote debugging between virtual machine (VM) and host fails” section in [`docs/troubleshooting.md`](./docs/troubleshooting.md#remote-debugging-between-virtual-machine-vm-and-host-fails).
 
 For more details on remote debugging, see the [Chrome DevTools documentation](https://developer.chrome.com/docs/devtools/remote-debugging/).
+
+### Debugging Chrome on Android
+
+Please consult [these instructions](./docs/debugging-android.md).
 
 ## Known limitations
 
